@@ -1,0 +1,11 @@
+registration_seconds: 180
+night_seconds: 60
+discussion_seconds: 120
+voting_seconds: 60
+verdict_seconds: 30
+minimum_players: 4
+maximum_players: 50
+lucky_survival_chance: 0.35
+afk_nights_before_elimination: 2
+leave_cooldown_minutes: 60
+

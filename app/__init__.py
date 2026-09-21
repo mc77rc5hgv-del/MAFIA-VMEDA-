@@ -1,0 +1,1 @@
+"""MAFIA VMEDA bot package."""

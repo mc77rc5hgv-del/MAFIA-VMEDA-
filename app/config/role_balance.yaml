@@ -1,0 +1,16 @@
+min_players: 4
+max_players: 50
+mafia_ratio: 0.21
+mafia_minimum: 1
+role_unlocks:
+  commissioner: 4
+  doctor: 6
+  warrant_officer: 8
+  lucky: 8
+  best_friend: 9
+  maniac: 10
+  snow_white: 10
+  lawyer: 12
+  homeless: 12
+  suicide: 13
+
