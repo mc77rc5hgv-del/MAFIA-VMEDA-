@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from html import escape
 
@@ -17,7 +18,6 @@ from app.game.timers import GameTimerManager
 from app.services.messaging import MessagingService
 from app.services.moderation import ModerationService
 from app.services.registry import GameRegistry
-from app.texts.events import GAME_STARTED
 
 
 class GameFlowService:
@@ -44,7 +44,6 @@ class GameFlowService:
         self.statistics = statistics
 
     async def begin_game(self, session: GameSession) -> None:
-        await self._update_game_post(session, GAME_STARTED)
         await self.moderation.set_night_permissions(session)
         await self._begin_night(session)
 
@@ -271,17 +270,13 @@ class GameFlowService:
         text: str,
         reply_markup: InlineKeyboardMarkup | None = None,
     ) -> None:
+        """Move the single public game post to the bottom of the group chat."""
         if session.main_message_id is not None:
-            try:
-                await self.bot.edit_message_text(
-                    text,
+            with suppress(TelegramBadRequest):
+                await self.bot.delete_message(
                     chat_id=session.chat_id,
                     message_id=session.main_message_id,
-                    reply_markup=reply_markup,
                 )
-                return
-            except TelegramBadRequest:
-                pass
         message = await self.bot.send_message(
             session.chat_id,
             text,

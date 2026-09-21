@@ -6,6 +6,7 @@ from aiogram.enums import ChatMemberStatus
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from app.bot.handlers.callbacks.game import _refresh_lobby
 from app.bot.keyboards.game import lobby_keyboard
 from app.config import Settings
 from app.database.repositories import StatisticsStore
@@ -45,8 +46,13 @@ async def create_game(
         return
     lock = await registry.lock_for(message.chat.id)
     async with lock:
-        if registry.get(message.chat.id) is not None:
-            await message.answer("В этой группе уже есть активная игра.")
+        existing = registry.get(message.chat.id)
+        if existing is not None:
+            if existing.phase is GamePhase.LOBBY:
+                await _refresh_lobby(message.bot, existing, settings)
+                await registry.persist(existing)
+            else:
+                await message.answer("Игра уже идёт. Текущая фаза: /status")
             return
         session = registry.create(message.chat.id, message.from_user.id)
         bot_user = await message.bot.get_me()

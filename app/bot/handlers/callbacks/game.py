@@ -1,5 +1,8 @@
-from aiogram import F, Router
+from contextlib import suppress
+
+from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.keyboards.game import (
@@ -28,13 +31,17 @@ router = Router(name="callbacks.game")
 
 
 async def _refresh_lobby(
-    message: Message,
+    bot: Bot,
     game: GameSession,
     settings: Settings,
 ) -> None:
-    bot_user = await message.bot.get_me()
+    bot_user = await bot.get_me()
     ready = sum(player.ready for player in game.players.values())
-    await message.edit_text(
+    if game.main_message_id is not None:
+        with suppress(TelegramBadRequest):
+            await bot.delete_message(game.chat_id, game.main_message_id)
+    message = await bot.send_message(
+        game.chat_id,
         LOBBY_CREATED.format(
             count=len(game.players),
             ready=ready,
@@ -43,6 +50,7 @@ async def _refresh_lobby(
         ),
         reply_markup=lobby_keyboard(game, bot_user.username),
     )
+    game.main_message_id = message.message_id
 
 
 async def _can_manage_lobby(query: CallbackQuery, session: GameSession) -> bool:
@@ -93,8 +101,8 @@ async def join_lobby(
         except ValueError as error:
             await query.answer(str(error), show_alert=True)
             return
+        await _refresh_lobby(query.bot, session, settings)
         await registry.persist(session)
-        await _refresh_lobby(query.message, session, settings)
         await query.answer("Вы зарегистрированы!")
 
 
@@ -125,8 +133,8 @@ async def leave_lobby(
         except ValueError as error:
             await query.answer(str(error), show_alert=True)
             return
+        await _refresh_lobby(query.bot, session, settings)
         await registry.persist(session)
-        await _refresh_lobby(query.message, session, settings)
         await query.answer("Вы вышли из регистрации.")
 
 
@@ -172,8 +180,8 @@ async def toggle_ready(
             await query.answer("Сначала присоединитесь к игре.", show_alert=True)
             return
         player.ready = not player.ready
+        await _refresh_lobby(query.bot, session, settings)
         await registry.persist(session)
-        await _refresh_lobby(query.message, session, settings)
     await query.answer("Готовность подтверждена." if player.ready else "Готовность снята.")
 
 
@@ -258,7 +266,6 @@ async def start_lobby(
             )
             await query.answer("Не удалось начать игру.", show_alert=True)
             return
-        await query.message.edit_text("✅ Регистрация завершена. Игра запускается…")
         await flow.begin_game(session)
         await query.answer("Игра началась!")
 
