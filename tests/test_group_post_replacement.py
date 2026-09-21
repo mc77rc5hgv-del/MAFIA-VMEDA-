@@ -1,8 +1,10 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+from aiogram.enums import ChatMemberStatus
 
-from app.bot.handlers.callbacks.game import _refresh_lobby
+from app.bot.handlers.callbacks.game import _can_manage_game, _refresh_lobby
 from app.config import Settings
 from app.game.models import GamePlayer, GameSession
 from app.services.game_flow import GameFlowService
@@ -52,3 +54,42 @@ async def test_lobby_menu_is_deleted_and_resent_after_update() -> None:
     assert bot.calls[1][0:2] == ("send", -100456)
     assert "Игроков: <b>1/50</b>" in str(bot.calls[1][2])
     assert session.main_message_id == 222
+
+
+@pytest.mark.asyncio
+async def test_creator_and_group_admin_can_manage_game() -> None:
+    session = GameSession(chat_id=-100789, created_by=10)
+    creator_query = SimpleNamespace(from_user=SimpleNamespace(id=10))
+    assert await _can_manage_game(creator_query, session)
+
+    bot = SimpleNamespace(
+        get_chat_member=AsyncMock(
+            return_value=SimpleNamespace(status=ChatMemberStatus.ADMINISTRATOR)
+        )
+    )
+    admin_query = SimpleNamespace(from_user=SimpleNamespace(id=20), bot=bot)
+    assert await _can_manage_game(admin_query, session)
+
+
+@pytest.mark.asyncio
+async def test_early_discussion_finish_cancels_timer_before_transition() -> None:
+    calls: list[tuple[str, int, str | int]] = []
+
+    class TimerStub:
+        def cancel(self, chat_id: int, name: str) -> None:
+            calls.append(("cancel", chat_id, name))
+
+    flow = GameFlowService.__new__(GameFlowService)
+    flow.timers = TimerStub()
+
+    async def end_discussion(chat_id: int, phase_number: int) -> None:
+        calls.append(("finish", chat_id, phase_number))
+
+    flow._end_discussion = end_discussion
+
+    await flow.end_discussion_early(-100789, 4)
+
+    assert calls == [
+        ("cancel", -100789, "discussion"),
+        ("finish", -100789, 4),
+    ]

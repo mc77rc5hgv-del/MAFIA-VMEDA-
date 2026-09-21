@@ -1,4 +1,10 @@
-from app.bot.keyboards.game import TARGETS_PER_PAGE, day_vote_keyboard, night_target_keyboard
+from app.bot.keyboards.game import (
+    TARGETS_PER_PAGE,
+    DiscussionCallback,
+    day_vote_keyboard,
+    discussion_keyboard,
+    night_target_keyboard,
+)
 from app.game.models import ActionType, GamePlayer, GameSession, RoleKey
 
 
@@ -44,3 +50,14 @@ def test_day_keyboard_paginates_fifty_players_and_keeps_callbacks_compact() -> N
         for button in buttons
         if button.callback_data is not None
     )
+
+
+def test_discussion_keyboard_identifies_game_and_phase() -> None:
+    session = GameSession(chat_id=-100, created_by=1, phase_number=7)
+
+    button = discussion_keyboard(session).inline_keyboard[0][0]
+    callback = DiscussionCallback.unpack(button.callback_data or "")
+
+    assert button.text == "🗳 Завершить обсуждение"
+    assert callback.game == session.callback_token
+    assert callback.phase == 7

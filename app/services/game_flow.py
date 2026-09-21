@@ -9,6 +9,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardMarkup
 
+from app.bot.keyboards.game import discussion_keyboard
 from app.config import Settings
 from app.database.repositories import StatisticsStore
 from app.game.engine import GameEngine
@@ -89,6 +90,7 @@ class GameFlowService:
                 escape("\n".join(result.public_events)) + "\n\n"
                 "☀️ <b>Наступил день</b>\n"
                 f"На обсуждение — {self.settings.discussion_seconds} секунд.",
+                reply_markup=discussion_keyboard(session),
             )
             await self.registry.persist(session)
             self.timers.schedule(
@@ -97,6 +99,10 @@ class GameFlowService:
                 self.settings.discussion_seconds,
                 lambda: self._end_discussion(chat_id, phase_number),
             )
+
+    async def end_discussion_early(self, chat_id: int, phase_number: int) -> None:
+        self.timers.cancel(chat_id, "discussion")
+        await self._end_discussion(chat_id, phase_number)
 
     async def _end_discussion(self, chat_id: int, phase_number: int) -> None:
         lock = await self.registry.lock_for(chat_id)

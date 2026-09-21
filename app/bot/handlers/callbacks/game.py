@@ -9,6 +9,7 @@ from app.bot.keyboards.game import (
     CODE_ACTIONS,
     DayPageCallback,
     DayVoteCallback,
+    DiscussionCallback,
     GameLobbyCallback,
     NightActionCallback,
     NightPageCallback,
@@ -53,7 +54,7 @@ async def _refresh_lobby(
     game.main_message_id = message.message_id
 
 
-async def _can_manage_lobby(query: CallbackQuery, session: GameSession) -> bool:
+async def _can_manage_game(query: CallbackQuery, session: GameSession) -> bool:
     if query.from_user.id == session.created_by:
         return True
     member = await query.bot.get_chat_member(session.chat_id, query.from_user.id)
@@ -203,7 +204,7 @@ async def cancel_lobby(
     ):
         await query.answer("Эта игра уже завершена.", show_alert=True)
         return
-    if not await _can_manage_lobby(query, session):
+    if not await _can_manage_game(query, session):
         await query.answer("Отменить игру может создатель или администратор.", show_alert=True)
         return
     session.phase = GamePhase.CANCELLED
@@ -236,7 +237,7 @@ async def start_lobby(
         ):
             await query.answer("Регистрация уже закрыта.", show_alert=True)
             return
-        if not await _can_manage_lobby(query, session):
+        if not await _can_manage_game(query, session):
             await query.answer("Запустить игру может создатель или администратор.", show_alert=True)
             return
         if session.phase is not GamePhase.LOBBY:
@@ -268,6 +269,35 @@ async def start_lobby(
             return
         await flow.begin_game(session)
         await query.answer("Игра началась!")
+
+
+@router.callback_query(DiscussionCallback.filter())
+async def finish_discussion_early(
+    query: CallbackQuery,
+    callback_data: DiscussionCallback,
+    registry: GameRegistry,
+    flow: GameFlowService,
+) -> None:
+    if not isinstance(query.message, Message):
+        await query.answer()
+        return
+    session = registry.get_by_token(callback_data.game)
+    if (
+        session is None
+        or session.chat_id != query.message.chat.id
+        or session.phase is not GamePhase.DISCUSSION
+        or callback_data.phase != session.phase_number
+    ):
+        await query.answer("Обсуждение уже завершено.", show_alert=True)
+        return
+    if not await _can_manage_game(query, session):
+        await query.answer(
+            "Завершить обсуждение может создатель игры или администратор.",
+            show_alert=True,
+        )
+        return
+    await query.answer("Обсуждение завершено. Начинается голосование.")
+    await flow.end_discussion_early(session.chat_id, session.phase_number)
 
 
 @router.callback_query(NightActionCallback.filter())

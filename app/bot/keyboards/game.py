@@ -53,6 +53,11 @@ class DayPageCallback(CallbackData, prefix="dp"):
     page: int
 
 
+class DiscussionCallback(CallbackData, prefix="dc"):
+    game: str
+    phase: int
+
+
 class RevengeCallback(CallbackData, prefix="r"):
     game: str
     phase: int
@@ -177,6 +182,22 @@ def day_vote_keyboard(session: GameSession, page: int = 0) -> InlineKeyboardMark
         )
     )
     return builder.as_markup()
+
+
+def discussion_keyboard(session: GameSession) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🗳 Завершить обсуждение",
+                    callback_data=DiscussionCallback(
+                        game=session.callback_token,
+                        phase=session.phase_number,
+                    ).pack(),
+                )
+            ]
+        ]
+    )
 
 
 def revenge_keyboard(
