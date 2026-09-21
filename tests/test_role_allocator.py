@@ -26,6 +26,20 @@ def test_all_roles_are_available_in_large_game(allocator: RoleAllocator) -> None
     assert set(RoleKey).issubset(set(deck))
 
 
+@pytest.mark.parametrize(
+    ("player_count", "mafia_count"),
+    [(4, 1), (5, 1), (6, 2), (15, 3), (20, 4), (30, 6), (40, 8), (50, 11)],
+)
+def test_mafia_count_comes_from_configured_bands(
+    allocator: RoleAllocator,
+    player_count: int,
+    mafia_count: int,
+) -> None:
+    deck = allocator.build_deck(player_count)
+    actual = sum(deck.count(role) for role in (RoleKey.MAFIA_BOSS, RoleKey.MAFIA, RoleKey.LAWYER))
+    assert actual == mafia_count
+
+
 def test_rejects_player_count_outside_limits(allocator: RoleAllocator) -> None:
     with pytest.raises(ValueError):
         allocator.build_deck(3)

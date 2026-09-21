@@ -1,7 +1,17 @@
 min_players: 4
 max_players: 50
-mafia_ratio: 0.21
-mafia_minimum: 1
+mafia_bands:
+  - {min: 4, max: 5, count: 1}
+  - {min: 6, max: 9, count: 2}
+  - {min: 10, max: 15, count: 3}
+  - {min: 16, max: 20, count: 4}
+  - {min: 21, max: 25, count: 5}
+  - {min: 26, max: 30, count: 6}
+  - {min: 31, max: 35, count: 7}
+  - {min: 36, max: 40, count: 8}
+  - {min: 41, max: 44, count: 9}
+  - {min: 45, max: 48, count: 10}
+  - {min: 49, max: 50, count: 11}
 role_unlocks:
   commissioner: 4
   doctor: 6
@@ -13,4 +23,3 @@ role_unlocks:
   lawyer: 12
   homeless: 12
   suicide: 13
-

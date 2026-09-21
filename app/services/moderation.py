@@ -46,8 +46,7 @@ class ModerationService:
 
     async def set_night_permissions(self, session: GameSession) -> None:
         await self._apply_many(
-            self.mute_player(session.chat_id, player.user_id)
-            for player in session.players.values()
+            self.mute_player(session.chat_id, player.user_id) for player in session.players.values()
         )
 
     async def set_day_permissions(self, session: GameSession) -> None:

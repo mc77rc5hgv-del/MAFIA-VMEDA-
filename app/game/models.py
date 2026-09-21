@@ -59,6 +59,7 @@ class GamePlayer:
     username: str | None = None
     role: RoleKey | None = None
     alive: bool = True
+    ready: bool = False
     joined_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     missed_nights: int = 0
     metadata: dict[str, object] = field(default_factory=dict)
@@ -110,10 +111,17 @@ class GameSession:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     winner: Faction | RoleKey | None = None
+    phase_deadline: datetime | None = None
+    main_message_id: int | None = None
 
     @property
     def alive_players(self) -> list[GamePlayer]:
         return [player for player in self.players.values() if player.alive]
+
+    @property
+    def callback_token(self) -> str:
+        """Compact game identifier that safely fits Telegram callback data."""
+        return self.game_id.hex[:10]
 
     def require_player(self, user_id: int) -> GamePlayer:
         try:

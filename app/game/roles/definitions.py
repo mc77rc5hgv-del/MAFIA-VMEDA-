@@ -1,91 +1,108 @@
+from pathlib import Path
+
+import yaml
+
 from app.game.models import ActionType, Faction, RoleKey
 from app.game.roles.base import RoleDefinition
+
+_ROLE_TEXTS = yaml.safe_load(
+    (Path(__file__).parents[2] / "config" / "role_texts.yaml").read_text(encoding="utf-8")
+)
+
+
+def _name(role: RoleKey) -> str:
+    return str(_ROLE_TEXTS[role.value]["name"])
+
+
+def _description(role: RoleKey) -> str:
+    return str(_ROLE_TEXTS[role.value]["description"])
+
 
 ROLE_DEFINITIONS: dict[RoleKey, RoleDefinition] = {
     RoleKey.CIVILIAN: RoleDefinition(
         RoleKey.CIVILIAN,
-        "Гражданский",
+        _name(RoleKey.CIVILIAN),
         Faction.TOWN,
-        "Днём обсуждает события и голосует против подозреваемых.",
+        _description(RoleKey.CIVILIAN),
     ),
     RoleKey.MAFIA_BOSS: RoleDefinition(
         RoleKey.MAFIA_BOSS,
-        "Глава мафии",
+        _name(RoleKey.MAFIA_BOSS),
         Faction.MAFIA,
-        "Руководит коллективным ночным убийством мафии.",
+        _description(RoleKey.MAFIA_BOSS),
         (ActionType.MAFIA_VOTE,),
     ),
     RoleKey.MAFIA: RoleDefinition(
         RoleKey.MAFIA,
-        "Мафия",
+        _name(RoleKey.MAFIA),
         Faction.MAFIA,
-        "Голосует за ночную жертву и наследует руководство после смерти главы.",
+        _description(RoleKey.MAFIA),
         (ActionType.MAFIA_VOTE,),
     ),
     RoleKey.COMMISSIONER: RoleDefinition(
         RoleKey.COMMISSIONER,
-        "Комиссар",
+        _name(RoleKey.COMMISSIONER),
         Faction.TOWN,
-        "Ночью проверяет роль игрока или совершает выстрел.",
+        _description(RoleKey.COMMISSIONER),
         (ActionType.INSPECT, ActionType.COMMISSIONER_SHOT),
     ),
     RoleKey.WARRANT_OFFICER: RoleDefinition(
         RoleKey.WARRANT_OFFICER,
-        "Прапорщик",
+        _name(RoleKey.WARRANT_OFFICER),
         Faction.TOWN,
-        "Получает проверки Комиссара и занимает его место после гибели.",
+        _description(RoleKey.WARRANT_OFFICER),
     ),
     RoleKey.DOCTOR: RoleDefinition(
         RoleKey.DOCTOR,
-        "Дохтор",
+        _name(RoleKey.DOCTOR),
         Faction.TOWN,
-        "Лечит выбранного игрока; один раз за игру может вылечить себя.",
+        _description(RoleKey.DOCTOR),
         (ActionType.HEAL,),
     ),
     RoleKey.MANIAC: RoleDefinition(
         RoleKey.MANIAC,
-        "Маньяк",
+        _name(RoleKey.MANIAC),
         Faction.NEUTRAL,
-        "Каждую ночь убивает одного игрока и побеждает в одиночку.",
+        _description(RoleKey.MANIAC),
         (ActionType.MANIAC_KILL,),
     ),
     RoleKey.SNOW_WHITE: RoleDefinition(
         RoleKey.SNOW_WHITE,
-        "Белоснежка",
+        _name(RoleKey.SNOW_WHITE),
         Faction.TOWN,
-        "Блокирует действие цели ночью и её активность следующим днём.",
+        _description(RoleKey.SNOW_WHITE),
         (ActionType.BLOCK,),
     ),
     RoleKey.LAWYER: RoleDefinition(
         RoleKey.LAWYER,
-        "Адвокат",
+        _name(RoleKey.LAWYER),
         Faction.MAFIA,
-        "Автоматически скрывает случайного подопечного от проверки Комиссара.",
+        _description(RoleKey.LAWYER),
     ),
     RoleKey.SUICIDE: RoleDefinition(
         RoleKey.SUICIDE,
-        "Самоубийца",
+        _name(RoleKey.SUICIDE),
         Faction.NEUTRAL,
-        "Побеждает, если его казнят на дневном голосовании.",
+        _description(RoleKey.SUICIDE),
     ),
     RoleKey.HOMELESS: RoleDefinition(
         RoleKey.HOMELESS,
-        "Бомж",
+        _name(RoleKey.HOMELESS),
         Faction.TOWN,
-        "Наблюдает за целью и видит её ночных посетителей.",
+        _description(RoleKey.HOMELESS),
         (ActionType.WATCH,),
     ),
     RoleKey.LUCKY: RoleDefinition(
         RoleKey.LUCKY,
-        "Счастливчик",
+        _name(RoleKey.LUCKY),
         Faction.TOWN,
-        "Имеет шанс пережить ночное покушение.",
+        _description(RoleKey.LUCKY),
     ),
     RoleKey.BEST_FRIEND: RoleDefinition(
         RoleKey.BEST_FRIEND,
-        "Лучший друг",
+        _name(RoleKey.BEST_FRIEND),
         Faction.TOWN,
-        "После собственной дневной казни забирает с собой выбранного игрока.",
+        _description(RoleKey.BEST_FRIEND),
     ),
 }
 

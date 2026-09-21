@@ -108,9 +108,7 @@ class ActionResolver:
 
     @staticmethod
     def _mafia_target(session: GameSession, actions: list[NightAction]) -> int | None:
-        mafia_votes = [
-            action for action in actions if action.action_type is ActionType.MAFIA_VOTE
-        ]
+        mafia_votes = [action for action in actions if action.action_type is ActionType.MAFIA_VOTE]
         votes = Counter(action.target_id for action in mafia_votes)
         if not votes:
             return None

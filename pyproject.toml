@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mafia-vmeda"
-version = "0.1.0"
+version = "0.2.0"
 description = "Telegram Mafia game bot themed for VMEDA"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -41,4 +41,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-

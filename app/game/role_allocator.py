@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,8 +13,7 @@ from app.game.models import RoleKey
 class RoleBalanceConfig:
     min_players: int
     max_players: int
-    mafia_ratio: float
-    mafia_minimum: int
+    mafia_bands: tuple[tuple[int, int, int], ...]
     role_unlocks: dict[RoleKey, int]
 
     @classmethod
@@ -24,8 +22,10 @@ class RoleBalanceConfig:
         return cls(
             min_players=int(raw["min_players"]),
             max_players=int(raw["max_players"]),
-            mafia_ratio=float(raw["mafia_ratio"]),
-            mafia_minimum=int(raw["mafia_minimum"]),
+            mafia_bands=tuple(
+                (int(band["min"]), int(band["max"]), int(band["count"]))
+                for band in raw["mafia_bands"]
+            ),
             role_unlocks={RoleKey(key): int(value) for key, value in raw["role_unlocks"].items()},
         )
 
@@ -41,10 +41,7 @@ class RoleAllocator:
                 f"Допустимо от {self.config.min_players} до {self.config.max_players} игроков"
             )
 
-        mafia_slots = max(
-            self.config.mafia_minimum,
-            math.ceil(player_count * self.config.mafia_ratio),
-        )
+        mafia_slots = self._mafia_slots(player_count)
         deck: list[RoleKey] = [RoleKey.MAFIA_BOSS]
 
         if self._unlocked(RoleKey.LAWYER, player_count) and mafia_slots >= 3:
@@ -79,3 +76,9 @@ class RoleAllocator:
     def _unlocked(self, role: RoleKey, player_count: int) -> bool:
         threshold = self.config.role_unlocks.get(role)
         return threshold is not None and player_count >= threshold
+
+    def _mafia_slots(self, player_count: int) -> int:
+        for minimum, maximum, count in self.config.mafia_bands:
+            if minimum <= player_count <= maximum:
+                return count
+        raise ValueError(f"Для {player_count} игроков не настроен баланс мафии")

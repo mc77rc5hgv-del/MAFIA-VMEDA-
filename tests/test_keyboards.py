@@ -1,4 +1,4 @@
-from app.bot.keyboards.game import day_vote_keyboard, night_target_keyboard
+from app.bot.keyboards.game import TARGETS_PER_PAGE, day_vote_keyboard, night_target_keyboard
 from app.game.models import ActionType, GamePlayer, GameSession, RoleKey
 
 
@@ -12,7 +12,7 @@ def callback_targets(markup: object) -> set[int]:
         int(button.callback_data.rsplit(":", maxsplit=1)[1])
         for row in keyboard
         for button in row
-        if button.callback_data is not None
+        if button.callback_data is not None and button.callback_data.startswith(("d:", "n:"))
     }
 
 
@@ -30,14 +30,17 @@ def test_mafia_keyboard_hides_teammates() -> None:
     assert callback_targets(markup) == {4}
 
 
-def test_day_keyboard_supports_fifty_players_and_abstention() -> None:
+def test_day_keyboard_paginates_fifty_players_and_keeps_callbacks_compact() -> None:
     session = GameSession(chat_id=-1001234567890, created_by=1, phase_number=12)
-    session.players = {
-        user_id: player(user_id, RoleKey.CIVILIAN) for user_id in range(1, 51)
-    }
+    session.players = {user_id: player(user_id, RoleKey.CIVILIAN) for user_id in range(1, 51)}
 
     markup = day_vote_keyboard(session)
 
     buttons = [button for row in markup.inline_keyboard for button in row]
-    assert len(buttons) == 51
+    assert len(buttons) == TARGETS_PER_PAGE + 2
     assert 0 in callback_targets(markup)
+    assert all(
+        len(button.callback_data.encode()) <= 64
+        for button in buttons
+        if button.callback_data is not None
+    )

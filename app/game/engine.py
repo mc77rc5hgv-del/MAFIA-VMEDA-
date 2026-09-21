@@ -196,9 +196,7 @@ class GameEngine:
                 raise ValueError("Нельзя забрать с собой погибшего игрока")
             target.alive = False
             result.revenge_user_id = target_id
-            result.public_events.append(
-                f"Лучший друг забрал с собой игрока: {target.display_name}"
-            )
+            result.public_events.append(f"Лучший друг забрал с собой игрока: {target.display_name}")
             result.role_changes.update(self._apply_inheritance(session))
         session.pending_revenge_by = None
         self._finish_verdict(session, result)
