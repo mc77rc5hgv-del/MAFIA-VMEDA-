@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     )
     redis_url: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+    bot_admin_id: int = Field(default=1326779223, validation_alias="BOT_ADMIN_ID")
     min_players: int = Field(default=4, ge=4, validation_alias="MIN_PLAYERS")
     max_players: int = Field(default=50, ge=4, le=50, validation_alias="MAX_PLAYERS")
     night_seconds: int = Field(default=60, ge=10, validation_alias="NIGHT_SECONDS")

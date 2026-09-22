@@ -2,6 +2,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from app.bot.keyboards.admin import AdminPanelCallback
 from app.game.models import GameSession
 
 
@@ -10,7 +11,11 @@ class PrivateMenuCallback(CallbackData, prefix="pm"):
     game: str = "-"
 
 
-def private_home_keyboard(bot_username: str | None) -> InlineKeyboardMarkup:
+def private_home_keyboard(
+    bot_username: str | None,
+    *,
+    show_admin: bool = False,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
         text="🎮 Моя игра",
@@ -29,7 +34,12 @@ def private_home_keyboard(bot_username: str | None) -> InlineKeyboardMarkup:
             text="➕ Добавить в группу",
             url=f"https://t.me/{bot_username}?startgroup=true",
         )
-    builder.adjust(1, 2, 1)
+    if show_admin:
+        builder.button(
+            text="🛡 Админ-панель",
+            callback_data=AdminPanelCallback(action="home"),
+        )
+    builder.adjust(1, 2, 1, 1)
     return builder.as_markup()
 
 

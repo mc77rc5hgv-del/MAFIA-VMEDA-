@@ -10,11 +10,12 @@ from aiogram.types import (
     BotCommand,
     BotCommandScopeAllGroupChats,
     BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat,
 )
 
 from app.bot import build_dispatcher
-from app.config import get_settings
-from app.database.repositories import ActiveGameStore, StatisticsStore
+from app.config import Settings, get_settings
+from app.database.repositories import ActiveGameStore, AdminStore, StatisticsStore
 from app.database.session import create_engine, create_schema, create_session_factory
 from app.game.action_resolver import ActionResolver
 from app.game.engine import GameEngine
@@ -27,15 +28,20 @@ from app.services.recovery import RecoveryService
 from app.services.registry import GameRegistry
 
 
-async def configure_commands(bot: Bot) -> None:
+async def configure_commands(bot: Bot, settings: Settings) -> None:
+    private_commands = [
+        BotCommand(command="start", description="Активировать личные сообщения"),
+        BotCommand(command="menu", description="Главное меню"),
+        BotCommand(command="roles", description="Описание ролей"),
+        BotCommand(command="rules", description="Правила игры"),
+    ]
     await bot.set_my_commands(
-        [
-            BotCommand(command="start", description="Активировать личные сообщения"),
-            BotCommand(command="menu", description="Главное меню"),
-            BotCommand(command="roles", description="Описание ролей"),
-            BotCommand(command="rules", description="Правила игры"),
-        ],
+        private_commands,
         scope=BotCommandScopeAllPrivateChats(),
+    )
+    await bot.set_my_commands(
+        [*private_commands, BotCommand(command="admin", description="Админ-панель")],
+        scope=BotCommandScopeChat(chat_id=settings.bot_admin_id),
     )
     await bot.set_my_commands(
         [
@@ -82,6 +88,7 @@ async def main() -> None:
     await create_schema(database_engine)
     game_store = ActiveGameStore(create_session_factory(database_engine))
     statistics = StatisticsStore(create_session_factory(database_engine))
+    admin_store = AdminStore(create_session_factory(database_engine))
     registry = GameRegistry(game_store)
     messaging = MessagingService(bot)
     moderation = ModerationService(bot)
@@ -100,7 +107,13 @@ async def main() -> None:
     await RecoveryService(registry, game_store.load_all).restore()
     for restored_game in registry.all():
         await flow.resume(restored_game)
-    await configure_commands(bot)
+        for player in restored_game.players.values():
+            await admin_store.register_user(
+                player.user_id,
+                player.username,
+                player.display_name,
+            )
+    await configure_commands(bot, settings)
 
     try:
         await dispatcher.start_polling(
@@ -112,6 +125,7 @@ async def main() -> None:
             flow=flow,
             settings=settings,
             statistics=statistics,
+            admin_store=admin_store,
             allowed_updates=dispatcher.resolve_used_update_types(),
         )
     finally:

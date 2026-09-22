@@ -16,6 +16,8 @@ from app.bot.keyboards.menu import (
     private_games_keyboard,
     private_home_keyboard,
 )
+from app.config import Settings
+from app.database.repositories import AdminStore
 from app.game.models import GamePhase, GameSession
 from app.game.roles import get_role_definition
 from app.services.messaging import MessagingService
@@ -48,7 +50,18 @@ HOME_TEXT = (
 
 @router.message(CommandStart())
 @router.message(Command("menu"))
-async def start_private(message: Message, registry: GameRegistry) -> None:
+async def start_private(
+    message: Message,
+    registry: GameRegistry,
+    admin_store: AdminStore,
+    settings: Settings,
+) -> None:
+    if message.from_user is not None:
+        await admin_store.register_user(
+            message.from_user.id,
+            message.from_user.username,
+            message.from_user.full_name,
+        )
     payload = (message.text or "").split(maxsplit=1)
     if len(payload) == 2 and payload[1].startswith("game_") and message.from_user is not None:
         session = registry.get_by_token(payload[1].removeprefix("game_"))
@@ -59,7 +72,12 @@ async def start_private(message: Message, registry: GameRegistry) -> None:
     bot_user = await message.bot.get_me()
     await message.answer(
         HOME_TEXT,
-        reply_markup=private_home_keyboard(bot_user.username),
+        reply_markup=private_home_keyboard(
+            bot_user.username,
+            show_admin=(
+                message.from_user is not None and message.from_user.id == settings.bot_admin_id
+            ),
+        ),
     )
 
 
@@ -79,6 +97,7 @@ async def navigate_private_menu(
     callback_data: PrivateMenuCallback,
     registry: GameRegistry,
     messaging: MessagingService,
+    settings: Settings,
 ) -> None:
     if not isinstance(query.message, Message):
         await query.answer()
@@ -86,7 +105,14 @@ async def navigate_private_menu(
 
     if callback_data.action == "home":
         bot_user = await query.bot.get_me()
-        await _edit_menu(query, HOME_TEXT, private_home_keyboard(bot_user.username))
+        await _edit_menu(
+            query,
+            HOME_TEXT,
+            private_home_keyboard(
+                bot_user.username,
+                show_admin=query.from_user.id == settings.bot_admin_id,
+            ),
+        )
         return
     if callback_data.action == "roles":
         await _edit_menu(query, roles_text(), private_back_keyboard())

@@ -23,6 +23,7 @@ from app.bot.keyboards.game import (
     revenge_keyboard,
 )
 from app.config import Settings
+from app.database.repositories import AdminStore
 from app.game.engine import GameEngine
 from app.game.models import GamePhase, GamePlayer, GameSession, NightAction
 from app.services.game_flow import GameFlowService
@@ -84,6 +85,7 @@ async def join_lobby(
     registry: GameRegistry,
     engine: GameEngine,
     messaging: MessagingService,
+    admin_store: AdminStore,
     settings: Settings,
 ) -> None:
     if not isinstance(query.message, Message):
@@ -95,6 +97,11 @@ async def join_lobby(
             show_alert=True,
         )
         return
+    await admin_store.register_user(
+        query.from_user.id,
+        query.from_user.username,
+        query.from_user.full_name,
+    )
     chat_id = query.message.chat.id
     lock = await registry.lock_for(chat_id)
     async with lock:

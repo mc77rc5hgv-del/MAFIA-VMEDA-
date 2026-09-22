@@ -13,3 +13,9 @@ def test_async_database_url_is_preserved() -> None:
     settings = Settings(DATABASE_URL=url)
 
     assert settings.database_url == url
+
+
+def test_default_bot_admin_is_the_configured_owner() -> None:
+    settings = Settings(bot_token="test")
+
+    assert settings.bot_admin_id == 1326779223
