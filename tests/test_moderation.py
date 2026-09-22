@@ -56,7 +56,7 @@ class BotStub:
 @pytest.mark.asyncio
 async def test_chat_is_locked_and_original_permissions_are_saved() -> None:
     bot = BotStub()
-    moderation = ModerationService(bot)  # type: ignore[arg-type]
+    moderation = ModerationService(bot, permission_check_delay=0)  # type: ignore[arg-type]
     session = GameSession(chat_id=-100, created_by=1)
 
     await moderation.lock_chat_for_game(session)
@@ -168,9 +168,65 @@ async def test_lobby_cancel_does_not_change_chat_permissions() -> None:
 async def test_missing_admin_permissions_prevent_game_start() -> None:
     bot = BotStub()
     bot.get_chat_member = _restricted_bot_member  # type: ignore[method-assign]
-    moderation = ModerationService(bot)  # type: ignore[arg-type]
+    moderation = ModerationService(bot, permission_check_delay=0)  # type: ignore[arg-type]
 
     with pytest.raises(ValueError, match="ограничивать участников"):
+        await moderation.ensure_bot_permissions(-100)
+
+
+@pytest.mark.asyncio
+async def test_string_admin_status_from_telegram_is_accepted() -> None:
+    bot = BotStub()
+
+    async def string_admin(chat_id: int, user_id: int) -> SimpleNamespace:
+        del chat_id, user_id
+        return SimpleNamespace(
+            status="administrator",
+            can_restrict_members=True,
+            can_delete_messages=True,
+        )
+
+    bot.get_chat_member = string_admin  # type: ignore[method-assign]
+    moderation = ModerationService(bot, permission_check_delay=0)  # type: ignore[arg-type]
+
+    await moderation.ensure_bot_permissions(-100)
+
+
+@pytest.mark.asyncio
+async def test_permission_check_retries_telegram_propagation() -> None:
+    bot = BotStub()
+    statuses = iter([ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR])
+
+    async def changing_status(chat_id: int, user_id: int) -> SimpleNamespace:
+        del chat_id, user_id
+        return SimpleNamespace(
+            status=next(statuses),
+            can_restrict_members=True,
+            can_delete_messages=True,
+        )
+
+    bot.get_chat_member = changing_status  # type: ignore[method-assign]
+    moderation = ModerationService(bot, permission_check_delay=0)  # type: ignore[arg-type]
+
+    await moderation.ensure_bot_permissions(-100)
+
+
+@pytest.mark.asyncio
+async def test_unsaved_admin_change_has_clear_message() -> None:
+    bot = BotStub()
+
+    async def ordinary_member(chat_id: int, user_id: int) -> SimpleNamespace:
+        del chat_id, user_id
+        return SimpleNamespace(status=ChatMemberStatus.MEMBER)
+
+    bot.get_chat_member = ordinary_member  # type: ignore[method-assign]
+    moderation = ModerationService(
+        bot,  # type: ignore[arg-type]
+        permission_check_attempts=1,
+        permission_check_delay=0,
+    )
+
+    with pytest.raises(ValueError, match="Сохранить изменения"):
         await moderation.ensure_bot_permissions(-100)
 
 

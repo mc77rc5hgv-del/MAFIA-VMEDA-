@@ -28,25 +28,45 @@ OPEN_PERMISSIONS = ChatPermissions(
 
 
 class ModerationService:
-    def __init__(self, bot: Bot) -> None:
+    def __init__(
+        self,
+        bot: Bot,
+        *,
+        permission_check_attempts: int = 3,
+        permission_check_delay: float = 0.75,
+    ) -> None:
         self.bot = bot
         self._restriction_limit = asyncio.Semaphore(8)
+        self._permission_check_attempts = permission_check_attempts
+        self._permission_check_delay = permission_check_delay
 
     async def ensure_bot_permissions(self, chat_id: int) -> None:
         bot_user = await self.bot.get_me()
-        member = await self.bot.get_chat_member(chat_id, bot_user.id)
-        if member.status is ChatMemberStatus.CREATOR:
-            return
         missing: list[str] = []
-        if member.status is not ChatMemberStatus.ADMINISTRATOR:
-            missing.append("назначить бота администратором")
-        else:
-            if not getattr(member, "can_restrict_members", False):
-                missing.append("ограничивать участников")
-            if not getattr(member, "can_delete_messages", False):
-                missing.append("удалять сообщения")
-        if missing:
-            raise ValueError("Боту нужны права: " + ", ".join(missing) + ".")
+        status: str | ChatMemberStatus = ChatMemberStatus.MEMBER
+        for attempt in range(self._permission_check_attempts):
+            member = await self.bot.get_chat_member(chat_id, bot_user.id)
+            status = member.status
+            if status == ChatMemberStatus.CREATOR:
+                return
+            missing = []
+            if status != ChatMemberStatus.ADMINISTRATOR:
+                missing.append("назначить бота администратором")
+            else:
+                if not getattr(member, "can_restrict_members", False):
+                    missing.append("ограничивать участников")
+                if not getattr(member, "can_delete_messages", False):
+                    missing.append("удалять сообщения")
+            if not missing:
+                return
+            if attempt + 1 < self._permission_check_attempts:
+                await asyncio.sleep(self._permission_check_delay)
+        if status != ChatMemberStatus.ADMINISTRATOR:
+            raise ValueError(
+                "Telegram пока видит бота обычным участником. Откройте права бота, "
+                "нажмите «Сохранить изменения» и повторите запуск."
+            )
+        raise ValueError("Боту нужны права: " + ", ".join(missing) + ".")
 
     async def lock_chat_for_game(self, session: GameSession) -> None:
         if session.original_chat_permissions is None:
