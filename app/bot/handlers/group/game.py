@@ -3,7 +3,7 @@ from html import escape
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 
 from app.bot.handlers.callbacks.game import _refresh_lobby
@@ -38,6 +38,7 @@ def _players_text(registry: GameRegistry, chat_id: int) -> str:
     return f"👥 <b>Участники ({len(session.players)}):</b>\n{names}"
 
 
+@router.message(CommandStart())
 @router.message(Command("game", "menu"))
 async def create_game(
     message: Message,

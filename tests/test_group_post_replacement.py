@@ -3,8 +3,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.enums import ChatMemberStatus
+from aiogram.filters import CommandStart
 
 from app.bot.handlers.callbacks.game import _can_manage_game, _refresh_lobby
+from app.bot.handlers.group.game import create_game
+from app.bot.handlers.group.game import router as group_router
 from app.config import Settings
 from app.game.models import GamePlayer, GameSession
 from app.services.game_flow import GameFlowService
@@ -94,3 +97,15 @@ async def test_early_discussion_finish_cancels_timer_before_transition() -> None
         ("cancel", -100789, "discussion"),
         ("finish", -100789, 4),
     ]
+
+
+def test_group_start_command_is_registered_for_game_menu() -> None:
+    registrations = [
+        handler for handler in group_router.message.handlers if handler.callback is create_game
+    ]
+
+    assert any(
+        isinstance(filter_item.callback, CommandStart)
+        for handler in registrations
+        for filter_item in handler.filters
+    )

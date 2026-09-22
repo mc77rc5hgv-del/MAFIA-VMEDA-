@@ -45,6 +45,7 @@ async def configure_commands(bot: Bot, settings: Settings) -> None:
     )
     await bot.set_my_commands(
         [
+            BotCommand(command="start", description="Открыть игровое меню"),
             BotCommand(command="game", description="Создать игровое лобби"),
             BotCommand(command="menu", description="Поднять игровое меню"),
             BotCommand(command="players", description="Участники игры"),
