@@ -94,10 +94,14 @@ def lobby_keyboard(session: GameSession, bot_username: str | None = None) -> Inl
     builder.button(text="🛑 Отменить игру", callback_data=callback("cancel"))
     if bot_username:
         builder.button(
+            text="✏️ Имя в игре",
+            url=f"https://t.me/{bot_username}?start=name_{session.callback_token}",
+        )
+        builder.button(
             text="💬 Активировать личные сообщения",
             url=f"https://t.me/{bot_username}?start=mafia_{session.callback_token}",
         )
-    builder.adjust(2, 2, 2, 1)
+    builder.adjust(2, 2, 2, 1, 1)
     return builder.as_markup()
 
 

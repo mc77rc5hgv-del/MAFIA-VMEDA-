@@ -17,9 +17,10 @@ from app.bot.keyboards.menu import (
     private_home_keyboard,
 )
 from app.config import Settings
-from app.database.repositories import AdminStore
+from app.database.repositories import AdminStore, PlayerNameStore, normalize_game_name
 from app.game.models import GamePhase, GameSession
 from app.game.roles import get_role_definition
+from app.services.lobby import refresh_lobby
 from app.services.messaging import MessagingService
 from app.services.registry import GameRegistry
 from app.texts.roles import roles_text
@@ -54,6 +55,7 @@ async def start_private(
     message: Message,
     registry: GameRegistry,
     admin_store: AdminStore,
+    player_names: PlayerNameStore,
     settings: Settings,
 ) -> None:
     if message.from_user is not None:
@@ -63,6 +65,15 @@ async def start_private(
             message.from_user.full_name,
         )
     payload = (message.text or "").split(maxsplit=1)
+    if len(payload) == 2 and payload[1].startswith("name_"):
+        current_name = (
+            await player_names.get(message.from_user.id) if message.from_user is not None else None
+        )
+        await message.answer(
+            _name_help_text(current_name),
+            reply_markup=private_back_keyboard(),
+        )
+        return
     if len(payload) == 2 and payload[1].startswith("game_") and message.from_user is not None:
         session = registry.get_by_token(payload[1].removeprefix("game_"))
         if session is not None and message.from_user.id in session.players:
@@ -91,12 +102,70 @@ async def show_rules(message: Message) -> None:
     await message.answer(RULES_TEXT, reply_markup=private_back_keyboard())
 
 
+@router.message(Command("name"))
+async def set_private_name(
+    message: Message,
+    player_names: PlayerNameStore,
+    registry: GameRegistry,
+    settings: Settings,
+) -> None:
+    if message.from_user is None:
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer(
+            _name_help_text(await player_names.get(message.from_user.id)),
+            reply_markup=private_back_keyboard(),
+        )
+        return
+    try:
+        name = normalize_game_name(parts[1])
+    except ValueError as error:
+        await message.answer(str(error), reply_markup=private_back_keyboard())
+        return
+    updated_lobbies = []
+    for session in registry.for_player(message.from_user.id):
+        if session.phase is not GamePhase.LOBBY:
+            continue
+        duplicate = any(
+            player.user_id != message.from_user.id
+            and player.display_name.casefold() == name.casefold()
+            for player in session.players.values()
+        )
+        if duplicate:
+            await message.answer(
+                "Это имя уже занято в одном из текущих лобби. Выберите другое.",
+                reply_markup=private_back_keyboard(),
+            )
+            return
+        updated_lobbies.append(session)
+    await player_names.set(message.from_user.id, name)
+    for session in updated_lobbies:
+        lock = await registry.lock_for(session.chat_id)
+        async with lock:
+            current = registry.get(session.chat_id)
+            if current is None or current.phase is not GamePhase.LOBBY:
+                continue
+            player = current.players.get(message.from_user.id)
+            if player is None:
+                continue
+            player.display_name = name
+            await refresh_lobby(message.bot, current, settings)
+            await registry.persist(current)
+    await message.answer(
+        f"✅ Игровое имя сохранено: <b>{escape(name)}</b>\n"
+        "Оно уже обновлено в лобби и будет использоваться в следующих партиях.",
+        reply_markup=private_back_keyboard(),
+    )
+
+
 @router.callback_query(PrivateMenuCallback.filter())
 async def navigate_private_menu(
     query: CallbackQuery,
     callback_data: PrivateMenuCallback,
     registry: GameRegistry,
     messaging: MessagingService,
+    player_names: PlayerNameStore,
     settings: Settings,
 ) -> None:
     if not isinstance(query.message, Message):
@@ -119,6 +188,13 @@ async def navigate_private_menu(
         return
     if callback_data.action == "rules":
         await _edit_menu(query, RULES_TEXT, private_back_keyboard())
+        return
+    if callback_data.action == "name":
+        await _edit_menu(
+            query,
+            _name_help_text(await player_names.get(query.from_user.id)),
+            private_back_keyboard(),
+        )
         return
     if callback_data.action == "games":
         await _show_games(query, registry)
@@ -227,3 +303,14 @@ async def _edit_menu(
     with suppress(TelegramBadRequest):
         await query.message.edit_text(text, reply_markup=reply_markup)
     await query.answer()
+
+
+def _name_help_text(current_name: str | None) -> str:
+    current = f"\nСейчас установлено: <b>{escape(current_name)}</b>\n" if current_name else "\n"
+    return (
+        "✏️ <b>Ваше имя в игре</b>\n"
+        f"{current}\n"
+        "Отправьте имя командой:\n"
+        "<code>/name Александр</code>\n\n"
+        "Допустимо от 2 до 32 символов. Имя сохранится для следующих партий."
+    )

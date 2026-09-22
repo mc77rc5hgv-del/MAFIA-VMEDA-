@@ -15,7 +15,12 @@ from aiogram.types import (
 
 from app.bot import build_dispatcher
 from app.config import Settings, get_settings
-from app.database.repositories import ActiveGameStore, AdminStore, StatisticsStore
+from app.database.repositories import (
+    ActiveGameStore,
+    AdminStore,
+    PlayerNameStore,
+    StatisticsStore,
+)
 from app.database.session import create_engine, create_schema, create_session_factory
 from app.game.action_resolver import ActionResolver
 from app.game.engine import GameEngine
@@ -32,6 +37,7 @@ async def configure_commands(bot: Bot, settings: Settings) -> None:
     private_commands = [
         BotCommand(command="start", description="Активировать личные сообщения"),
         BotCommand(command="menu", description="Главное меню"),
+        BotCommand(command="name", description="Моё имя в игре"),
         BotCommand(command="roles", description="Описание ролей"),
         BotCommand(command="rules", description="Правила игры"),
     ]
@@ -48,6 +54,7 @@ async def configure_commands(bot: Bot, settings: Settings) -> None:
             BotCommand(command="start", description="Открыть игровое меню"),
             BotCommand(command="game", description="Создать игровое лобби"),
             BotCommand(command="menu", description="Поднять игровое меню"),
+            BotCommand(command="name", description="Указать имя в игре"),
             BotCommand(command="players", description="Участники игры"),
             BotCommand(command="status", description="Фаза и оставшееся время"),
             BotCommand(command="profile", description="Профиль и статистика"),
@@ -90,6 +97,7 @@ async def main() -> None:
     game_store = ActiveGameStore(create_session_factory(database_engine))
     statistics = StatisticsStore(create_session_factory(database_engine))
     admin_store = AdminStore(create_session_factory(database_engine))
+    player_names = PlayerNameStore(create_session_factory(database_engine))
     registry = GameRegistry(game_store)
     messaging = MessagingService(bot)
     moderation = ModerationService(bot)
@@ -127,6 +135,7 @@ async def main() -> None:
             settings=settings,
             statistics=statistics,
             admin_store=admin_store,
+            player_names=player_names,
             allowed_updates=dispatcher.resolve_used_update_types(),
         )
     finally:

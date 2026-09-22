@@ -5,6 +5,7 @@ from app.bot.keyboards.game import (
     day_vote_keyboard,
     discussion_keyboard,
     game_panel_keyboard,
+    lobby_keyboard,
     night_target_keyboard,
 )
 from app.bot.keyboards.menu import PrivateMenuCallback, private_game_keyboard, private_home_keyboard
@@ -107,3 +108,19 @@ def test_private_menu_links_group_and_active_game_controls() -> None:
     callback = PrivateMenuCallback.unpack(refresh.callback_data or "")
     assert callback.action == "game"
     assert callback.game == session.callback_token
+
+
+def test_lobby_and_private_menu_offer_player_name_controls() -> None:
+    session = GameSession(chat_id=-100, created_by=1)
+    lobby_buttons = [
+        button
+        for row in lobby_keyboard(session, "vmeda_mafia_bot").inline_keyboard
+        for button in row
+    ]
+    private_buttons = [
+        button for row in private_home_keyboard("vmeda_mafia_bot").inline_keyboard for button in row
+    ]
+
+    name_link = next(button for button in lobby_buttons if button.text == "✏️ Имя в игре")
+    assert name_link.url and f"name_{session.callback_token}" in name_link.url
+    assert any(button.text == "✏️ Моё имя" for button in private_buttons)

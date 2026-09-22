@@ -29,6 +29,10 @@ def private_home_keyboard(
         text="📖 Правила",
         callback_data=PrivateMenuCallback(action="rules"),
     )
+    builder.button(
+        text="✏️ Моё имя",
+        callback_data=PrivateMenuCallback(action="name"),
+    )
     if bot_username:
         builder.button(
             text="➕ Добавить в группу",
@@ -39,7 +43,7 @@ def private_home_keyboard(
             text="🛡 Админ-панель",
             callback_data=AdminPanelCallback(action="home"),
         )
-    builder.adjust(1, 2, 1, 1)
+    builder.adjust(1, 2, 1, 1, 1)
     return builder.as_markup()
 
 

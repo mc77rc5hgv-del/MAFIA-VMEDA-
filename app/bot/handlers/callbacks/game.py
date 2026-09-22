@@ -1,9 +1,7 @@
-from contextlib import suppress
 from datetime import UTC, datetime
 
-from aiogram import Bot, F, Router
+from aiogram import F, Router
 from aiogram.enums import ChatMemberStatus
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.keyboards.game import (
@@ -18,18 +16,17 @@ from app.bot.keyboards.game import (
     RevengeCallback,
     RevengePageCallback,
     day_vote_keyboard,
-    lobby_keyboard,
     night_target_keyboard,
     revenge_keyboard,
 )
 from app.config import Settings
-from app.database.repositories import AdminStore
+from app.database.repositories import AdminStore, PlayerNameStore, unique_game_name
 from app.game.engine import GameEngine
 from app.game.models import GamePhase, GamePlayer, GameSession, NightAction
 from app.services.game_flow import GameFlowService
+from app.services.lobby import refresh_lobby as _refresh_lobby
 from app.services.messaging import MessagingService
 from app.services.registry import GameRegistry
-from app.texts.events import LOBBY_CREATED
 
 router = Router(name="callbacks.game")
 
@@ -44,31 +41,6 @@ PHASE_NAMES = {
     GamePhase.FINISHED: "завершена",
     GamePhase.CANCELLED: "отменена",
 }
-
-
-async def _refresh_lobby(
-    bot: Bot,
-    game: GameSession,
-    settings: Settings,
-) -> None:
-    bot_user = await bot.get_me()
-    ready = sum(player.ready for player in game.players.values())
-    text = LOBBY_CREATED.format(
-        count=len(game.players),
-        ready=ready,
-        minimum=settings.min_players,
-        maximum=settings.max_players,
-    )
-    if game.main_message_id is not None:
-        with suppress(TelegramBadRequest):
-            await bot.delete_message(game.chat_id, game.main_message_id)
-    message = await bot.send_message(
-        game.chat_id,
-        text,
-        reply_markup=lobby_keyboard(game, bot_user.username),
-    )
-    game.main_message_id = message.message_id
-    game.main_message_text = text
 
 
 async def _can_manage_game(query: CallbackQuery, session: GameSession) -> bool:
@@ -86,6 +58,7 @@ async def join_lobby(
     engine: GameEngine,
     messaging: MessagingService,
     admin_store: AdminStore,
+    player_names: PlayerNameStore,
     settings: Settings,
 ) -> None:
     if not isinstance(query.message, Message):
@@ -102,6 +75,7 @@ async def join_lobby(
         query.from_user.username,
         query.from_user.full_name,
     )
+    preferred_name = await player_names.get(query.from_user.id)
     chat_id = query.message.chat.id
     lock = await registry.lock_for(chat_id)
     async with lock:
@@ -118,7 +92,11 @@ async def join_lobby(
                 session,
                 GamePlayer(
                     user_id=query.from_user.id,
-                    display_name=query.from_user.full_name,
+                    display_name=unique_game_name(
+                        preferred_name or query.from_user.full_name,
+                        query.from_user.id,
+                        [player.display_name for player in session.players.values()],
+                    ),
                     username=query.from_user.username,
                 ),
             )

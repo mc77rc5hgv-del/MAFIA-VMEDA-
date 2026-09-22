@@ -6,14 +6,14 @@ from aiogram.enums import ChatMemberStatus
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 
-from app.bot.handlers.callbacks.game import _refresh_lobby
 from app.bot.keyboards.game import lobby_keyboard
 from app.bot.middlewares import GameChatGuardMiddleware
 from app.config import Settings
-from app.database.repositories import StatisticsStore
+from app.database.repositories import PlayerNameStore, StatisticsStore, normalize_game_name
 from app.game.engine import GameEngine
 from app.game.models import GamePhase
 from app.services.game_flow import GameFlowService
+from app.services.lobby import refresh_lobby
 from app.services.messaging import MessagingService
 from app.services.registry import GameRegistry
 from app.texts.events import LOBBY_CREATED
@@ -53,7 +53,7 @@ async def create_game(
         existing = registry.get(message.chat.id)
         if existing is not None:
             if existing.phase is GamePhase.LOBBY:
-                await _refresh_lobby(message.bot, existing, settings)
+                await refresh_lobby(message.bot, existing, settings)
                 await registry.persist(existing)
             else:
                 await flow.repost_current(existing)
@@ -78,6 +78,52 @@ async def create_game(
 @router.message(Command("players"))
 async def show_players(message: Message, registry: GameRegistry) -> None:
     await message.answer(_players_text(registry, message.chat.id))
+
+
+@router.message(Command("name"))
+async def set_lobby_name(
+    message: Message,
+    registry: GameRegistry,
+    player_names: PlayerNameStore,
+    settings: Settings,
+) -> None:
+    if message.from_user is None:
+        return
+    raw_name = (message.text or "").split(maxsplit=1)
+    if len(raw_name) < 2:
+        await message.answer("Укажите имя после команды: <code>/name Ваше имя</code>")
+        return
+    try:
+        name = normalize_game_name(raw_name[1])
+    except ValueError as error:
+        await message.answer(str(error))
+        return
+    lock = await registry.lock_for(message.chat.id)
+    async with lock:
+        session = registry.get(message.chat.id)
+        if session is None or session.phase is not GamePhase.LOBBY:
+            await player_names.set(message.from_user.id, name)
+            await message.answer("✅ Имя сохранено для следующих игр.")
+            return
+        player = session.players.get(message.from_user.id)
+        duplicate = any(
+            other.user_id != message.from_user.id
+            and other.display_name.casefold() == name.casefold()
+            for other in session.players.values()
+        )
+        if duplicate:
+            await message.answer("Это имя уже занято в текущей игре. Выберите другое.")
+            return
+        await player_names.set(message.from_user.id, name)
+        if player is None:
+            await message.answer(
+                f"✅ Имя <b>{escape(name)}</b> сохранено. Теперь присоединитесь к игре."
+            )
+            return
+        player.display_name = name
+        await refresh_lobby(message.bot, session, settings)
+        await registry.persist(session)
+    await message.answer(f"✅ Ваше имя в игре: <b>{escape(name)}</b>")
 
 
 @router.message(Command("roles"))
