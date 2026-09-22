@@ -58,6 +58,12 @@ class DiscussionCallback(CallbackData, prefix="dc"):
     phase: int
 
 
+class GamePanelCallback(CallbackData, prefix="gp"):
+    game: str
+    phase: int
+    action: str
+
+
 class RevengeCallback(CallbackData, prefix="r"):
     game: str
     phase: int
@@ -185,19 +191,49 @@ def day_vote_keyboard(session: GameSession, page: int = 0) -> InlineKeyboardMark
 
 
 def discussion_keyboard(session: GameSession) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🗳 Завершить обсуждение",
-                    callback_data=DiscussionCallback(
-                        game=session.callback_token,
-                        phase=session.phase_number,
-                    ).pack(),
-                )
-            ]
-        ]
+    return game_panel_keyboard(session, include_finish_discussion=True)
+
+
+def game_panel_keyboard(
+    session: GameSession,
+    bot_username: str | None = None,
+    *,
+    include_finish_discussion: bool = False,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="📊 Статус",
+        callback_data=GamePanelCallback(
+            game=session.callback_token,
+            phase=session.phase_number,
+            action="status",
+        ),
     )
+    builder.button(
+        text="👥 Игроки",
+        callback_data=GamePanelCallback(
+            game=session.callback_token,
+            phase=session.phase_number,
+            action="players",
+        ),
+    )
+    if bot_username:
+        builder.button(
+            text="🎮 Личное меню",
+            url=f"https://t.me/{bot_username}?start=game_{session.callback_token}",
+        )
+    builder.adjust(2, 1)
+    if include_finish_discussion:
+        builder.row(
+            InlineKeyboardButton(
+                text="🗳 Завершить обсуждение",
+                callback_data=DiscussionCallback(
+                    game=session.callback_token,
+                    phase=session.phase_number,
+                ).pack(),
+            )
+        )
+    return builder.as_markup()
 
 
 def revenge_keyboard(

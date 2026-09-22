@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from html import escape
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import InlineKeyboardMarkup
 
-from app.bot.keyboards.game import discussion_keyboard
+from app.bot.keyboards.game import game_panel_keyboard
 from app.config import Settings
 from app.database.repositories import StatisticsStore
 from app.game.engine import GameEngine
@@ -19,6 +20,8 @@ from app.game.timers import GameTimerManager
 from app.services.messaging import MessagingService
 from app.services.moderation import ModerationService
 from app.services.registry import GameRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class GameFlowService:
@@ -45,8 +48,34 @@ class GameFlowService:
         self.statistics = statistics
 
     async def begin_game(self, session: GameSession) -> None:
+        try:
+            await self.moderation.lock_chat_for_game(session)
+        except (TelegramBadRequest, TelegramForbiddenError) as error:
+            session.phase = GamePhase.CANCELLED
+            await self.registry.discard(session.chat_id)
+            raise ValueError(
+                "Не удалось временно закрыть чат. Проверьте права бота и создайте игру заново."
+            ) from error
+        await self.registry.persist(session)
         await self.moderation.set_night_permissions(session)
         await self._begin_night(session)
+
+    async def ensure_moderation_ready(self, chat_id: int) -> None:
+        await self.moderation.ensure_bot_permissions(chat_id)
+
+    async def repost_current(self, session: GameSession) -> None:
+        text = session.main_message_text or (
+            f"🎮 <b>Игра продолжается</b>\nТекущая фаза: <b>{session.phase.value}</b>."
+        )
+        await self._update_game_post(
+            session,
+            text,
+            reply_markup=await self._game_panel(
+                session,
+                include_finish_discussion=session.phase is GamePhase.DISCUSSION,
+            ),
+        )
+        await self.registry.persist(session)
 
     async def _begin_night(self, session: GameSession) -> None:
         session.phase_deadline = datetime.now(UTC) + timedelta(seconds=self.settings.night_seconds)
@@ -54,6 +83,7 @@ class GameFlowService:
             session,
             f"🌙 <b>Ночь №{session.phase_number}</b>\n"
             f"На действия — {self.settings.night_seconds} секунд. Город засыпает…",
+            reply_markup=await self._game_panel(session),
         )
         await self.registry.persist(session)
         await self.messaging.send_night_prompts(session)
@@ -90,7 +120,10 @@ class GameFlowService:
                 escape("\n".join(result.public_events)) + "\n\n"
                 "☀️ <b>Наступил день</b>\n"
                 f"На обсуждение — {self.settings.discussion_seconds} секунд.",
-                reply_markup=discussion_keyboard(session),
+                reply_markup=await self._game_panel(
+                    session,
+                    include_finish_discussion=True,
+                ),
             )
             await self.registry.persist(session)
             self.timers.schedule(
@@ -122,6 +155,7 @@ class GameFlowService:
                 session,
                 "🗳 <b>Дневное голосование</b>\n"
                 "Кнопки для голосования отправлены участникам в личные сообщения.",
+                reply_markup=await self._game_panel(session),
             )
             await self.registry.persist(session)
             await self.messaging.send_day_vote_prompts(session)
@@ -143,7 +177,11 @@ class GameFlowService:
             ):
                 return
             result = self.engine.resolve_day_vote(session)
-            await self._update_game_post(session, escape("\n".join(result.public_events)))
+            await self._update_game_post(
+                session,
+                escape("\n".join(result.public_events)),
+                reply_markup=await self._game_panel(session),
+            )
             if result.pending_revenge_by is not None:
                 session.phase_deadline = datetime.now(UTC) + timedelta(
                     seconds=self.settings.verdict_seconds
@@ -224,6 +262,16 @@ class GameFlowService:
         if session.phase is GamePhase.CANCELLED:
             await self.cancel_game(session)
             return
+        try:
+            await self.moderation.lock_chat_for_game(session)
+            await self.registry.persist(session)
+        except (TelegramBadRequest, TelegramForbiddenError) as error:
+            logger.warning(
+                "Could not restore chat moderation for game %s in chat %s: %s",
+                session.game_id,
+                session.chat_id,
+                error,
+            )
         if session.phase is GamePhase.NIGHT:
             await self.moderation.set_night_permissions(session)
             self._schedule_remaining(
@@ -289,6 +337,20 @@ class GameFlowService:
             reply_markup=reply_markup,
         )
         session.main_message_id = message.message_id
+        session.main_message_text = text
+
+    async def _game_panel(
+        self,
+        session: GameSession,
+        *,
+        include_finish_discussion: bool = False,
+    ) -> InlineKeyboardMarkup:
+        bot_user = await self.bot.get_me()
+        return game_panel_keyboard(
+            session,
+            bot_user.username,
+            include_finish_discussion=include_finish_discussion,
+        )
 
     @staticmethod
     def _winner_text(winner: Faction | RoleKey | None) -> str:

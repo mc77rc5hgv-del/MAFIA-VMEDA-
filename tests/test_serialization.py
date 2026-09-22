@@ -20,6 +20,12 @@ def test_active_game_snapshot_round_trip() -> None:
         phase_number=3,
         phase_deadline=deadline,
         main_message_id=555,
+        main_message_text="Текущая ночь",
+        original_player_permissions={10: {"can_send_messages": False, "until_date": 1_800_000_000}},
+        original_chat_permissions={
+            "can_send_messages": True,
+            "can_send_photos": False,
+        },
     )
     game.players = {
         10: GamePlayer(10, "Курсант", role=RoleKey.DOCTOR, ready=True),
@@ -34,6 +40,10 @@ def test_active_game_snapshot_round_trip() -> None:
     assert restored.phase is GamePhase.NIGHT
     assert restored.phase_deadline == deadline
     assert restored.main_message_id == 555
+    assert restored.main_message_text == "Текущая ночь"
+    assert restored.original_player_permissions[10]["can_send_messages"] is False
+    assert restored.original_player_permissions[10]["until_date"] == 1_800_000_000
+    assert restored.original_chat_permissions == game.original_chat_permissions
     assert restored.players[10].ready is True
     assert restored.players[10].role is RoleKey.DOCTOR
     assert restored.night_actions[10].action_type is ActionType.HEAL

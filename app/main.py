@@ -31,6 +31,7 @@ async def configure_commands(bot: Bot) -> None:
     await bot.set_my_commands(
         [
             BotCommand(command="start", description="Активировать личные сообщения"),
+            BotCommand(command="menu", description="Главное меню"),
             BotCommand(command="roles", description="Описание ролей"),
             BotCommand(command="rules", description="Правила игры"),
         ],
@@ -39,6 +40,7 @@ async def configure_commands(bot: Bot) -> None:
     await bot.set_my_commands(
         [
             BotCommand(command="game", description="Создать игровое лобби"),
+            BotCommand(command="menu", description="Поднять игровое меню"),
             BotCommand(command="players", description="Участники игры"),
             BotCommand(command="status", description="Фаза и оставшееся время"),
             BotCommand(command="profile", description="Профиль и статистика"),
@@ -106,6 +108,7 @@ async def main() -> None:
             registry=registry,
             engine=engine,
             messaging=messaging,
+            moderation=moderation,
             flow=flow,
             settings=settings,
             statistics=statistics,

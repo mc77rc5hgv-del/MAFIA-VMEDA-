@@ -52,6 +52,9 @@ class GameRegistry:
     def all(self) -> tuple[GameSession, ...]:
         return tuple(self._games.values())
 
+    def for_player(self, user_id: int) -> tuple[GameSession, ...]:
+        return tuple(game for game in self._games.values() if user_id in game.players)
+
     async def persist(self, session: GameSession) -> None:
         if self._store is not None:
             await self._store.save(session)

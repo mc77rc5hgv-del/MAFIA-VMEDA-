@@ -1,10 +1,13 @@
 from app.bot.keyboards.game import (
     TARGETS_PER_PAGE,
     DiscussionCallback,
+    GamePanelCallback,
     day_vote_keyboard,
     discussion_keyboard,
+    game_panel_keyboard,
     night_target_keyboard,
 )
+from app.bot.keyboards.menu import PrivateMenuCallback, private_game_keyboard, private_home_keyboard
 from app.game.models import ActionType, GamePlayer, GameSession, RoleKey
 
 
@@ -55,9 +58,52 @@ def test_day_keyboard_paginates_fifty_players_and_keeps_callbacks_compact() -> N
 def test_discussion_keyboard_identifies_game_and_phase() -> None:
     session = GameSession(chat_id=-100, created_by=1, phase_number=7)
 
-    button = discussion_keyboard(session).inline_keyboard[0][0]
+    buttons = [button for row in discussion_keyboard(session).inline_keyboard for button in row]
+    button = next(button for button in buttons if button.text == "🗳 Завершить обсуждение")
     callback = DiscussionCallback.unpack(button.callback_data or "")
 
     assert button.text == "🗳 Завершить обсуждение"
     assert callback.game == session.callback_token
     assert callback.phase == 7
+
+
+def test_group_game_panel_has_navigation_and_compact_callbacks() -> None:
+    session = GameSession(chat_id=-100, created_by=1, phase_number=12)
+
+    markup = game_panel_keyboard(session, "vmeda_mafia_bot", include_finish_discussion=True)
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    labels = {button.text for button in buttons}
+
+    assert {"📊 Статус", "👥 Игроки", "🎮 Личное меню", "🗳 Завершить обсуждение"} <= labels
+    private_menu = next(button for button in buttons if button.text == "🎮 Личное меню")
+    assert private_menu.url and f"game_{session.callback_token}" in private_menu.url
+    status_button = next(button for button in buttons if button.text == "📊 Статус")
+    callback = GamePanelCallback.unpack(status_button.callback_data or "")
+    assert callback.game == session.callback_token
+    assert callback.phase == 12
+    assert callback.action == "status"
+    assert all(
+        len(button.callback_data.encode()) <= 64
+        for button in buttons
+        if button.callback_data is not None
+    )
+
+
+def test_private_menu_links_group_and_active_game_controls() -> None:
+    session = GameSession(chat_id=-100, created_by=1)
+    home_buttons = [
+        button for row in private_home_keyboard("vmeda_mafia_bot").inline_keyboard for button in row
+    ]
+    game_buttons = [
+        button
+        for row in private_game_keyboard(session, show_actions=True).inline_keyboard
+        for button in row
+    ]
+
+    assert any(button.url and "startgroup=true" in button.url for button in home_buttons)
+    game_labels = {button.text for button in game_buttons}
+    assert {"🎯 Ночные действия", "🔄 Обновить", "⬅️ К списку игр"} <= game_labels
+    refresh = next(button for button in game_buttons if button.text == "🔄 Обновить")
+    callback = PrivateMenuCallback.unpack(refresh.callback_data or "")
+    assert callback.action == "game"
+    assert callback.game == session.callback_token

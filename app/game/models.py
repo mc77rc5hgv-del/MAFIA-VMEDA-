@@ -113,6 +113,11 @@ class GameSession:
     winner: Faction | RoleKey | None = None
     phase_deadline: datetime | None = None
     main_message_id: int | None = None
+    main_message_text: str | None = None
+    original_chat_permissions: dict[str, bool | None] | None = None
+    original_player_permissions: dict[int, dict[str, bool | int | None]] = field(
+        default_factory=dict
+    )
 
     @property
     def alive_players(self) -> list[GamePlayer]:

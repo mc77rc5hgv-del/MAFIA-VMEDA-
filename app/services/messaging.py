@@ -87,23 +87,36 @@ class MessagingService:
         return failed
 
     async def send_night_prompts(self, session: GameSession) -> None:
-        async def send(player: GamePlayer) -> None:
-            if player.role is None or not player.alive:
-                return
-            definition = get_role_definition(player.role)
-            for action_type in definition.night_actions:
-                title = ACTION_TITLES.get(action_type.value, "Выберите цель")
-                await self._safe_private(
-                    player.user_id,
-                    f"🌙 <b>Ночь №{session.phase_number}</b>\n{title}",
-                    reply_markup=night_target_keyboard(
-                        session,
-                        player.user_id,
-                        action_type,
-                    ),
-                )
+        await asyncio.gather(
+            *(
+                self.send_night_prompts_for_player(session, player.user_id)
+                for player in session.alive_players
+            )
+        )
 
-        await asyncio.gather(*(send(player) for player in session.alive_players))
+    async def send_night_prompts_for_player(
+        self,
+        session: GameSession,
+        user_id: int,
+    ) -> int:
+        player = session.players.get(user_id)
+        if player is None or player.role is None or not player.alive:
+            return 0
+        definition = get_role_definition(player.role)
+        sent = 0
+        for action_type in definition.night_actions:
+            title = ACTION_TITLES.get(action_type.value, "Выберите цель")
+            if await self._safe_private(
+                player.user_id,
+                f"🌙 <b>Ночь №{session.phase_number}</b>\n{title}",
+                reply_markup=night_target_keyboard(
+                    session,
+                    player.user_id,
+                    action_type,
+                ),
+            ):
+                sent += 1
+        return sent
 
     async def send_night_results(
         self,

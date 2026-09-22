@@ -1,4 +1,5 @@
 from contextlib import suppress
+from datetime import UTC, datetime
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus
@@ -11,6 +12,7 @@ from app.bot.keyboards.game import (
     DayVoteCallback,
     DiscussionCallback,
     GameLobbyCallback,
+    GamePanelCallback,
     NightActionCallback,
     NightPageCallback,
     RevengeCallback,
@@ -30,6 +32,18 @@ from app.texts.events import LOBBY_CREATED
 
 router = Router(name="callbacks.game")
 
+PHASE_NAMES = {
+    GamePhase.LOBBY: "регистрация",
+    GamePhase.ASSIGNING: "раздача ролей",
+    GamePhase.NIGHT: "ночь",
+    GamePhase.DAWN: "утро",
+    GamePhase.DISCUSSION: "обсуждение",
+    GamePhase.VOTING: "голосование",
+    GamePhase.VERDICT: "приговор",
+    GamePhase.FINISHED: "завершена",
+    GamePhase.CANCELLED: "отменена",
+}
+
 
 async def _refresh_lobby(
     bot: Bot,
@@ -38,20 +52,22 @@ async def _refresh_lobby(
 ) -> None:
     bot_user = await bot.get_me()
     ready = sum(player.ready for player in game.players.values())
+    text = LOBBY_CREATED.format(
+        count=len(game.players),
+        ready=ready,
+        minimum=settings.min_players,
+        maximum=settings.max_players,
+    )
     if game.main_message_id is not None:
         with suppress(TelegramBadRequest):
             await bot.delete_message(game.chat_id, game.main_message_id)
     message = await bot.send_message(
         game.chat_id,
-        LOBBY_CREATED.format(
-            count=len(game.players),
-            ready=ready,
-            minimum=settings.min_players,
-            maximum=settings.max_players,
-        ),
+        text,
         reply_markup=lobby_keyboard(game, bot_user.username),
     )
     game.main_message_id = message.message_id
+    game.main_message_text = text
 
 
 async def _can_manage_game(query: CallbackQuery, session: GameSession) -> bool:
@@ -256,6 +272,11 @@ async def start_lobby(
                 show_alert=True,
             )
             return
+        try:
+            await flow.ensure_moderation_ready(chat_id)
+        except ValueError as error:
+            await query.answer(str(error), show_alert=True)
+            return
         assignments = engine.start(session)
         await registry.persist(session)
         failed = await messaging.send_roles(session.players.values(), assignments)
@@ -267,7 +288,11 @@ async def start_lobby(
             )
             await query.answer("Не удалось начать игру.", show_alert=True)
             return
-        await flow.begin_game(session)
+        try:
+            await flow.begin_game(session)
+        except ValueError as error:
+            await query.answer(str(error), show_alert=True)
+            return
         await query.answer("Игра началась!")
 
 
@@ -298,6 +323,50 @@ async def finish_discussion_early(
         return
     await query.answer("Обсуждение завершено. Начинается голосование.")
     await flow.end_discussion_early(session.chat_id, session.phase_number)
+
+
+@router.callback_query(GamePanelCallback.filter())
+async def open_game_panel(
+    query: CallbackQuery,
+    callback_data: GamePanelCallback,
+    registry: GameRegistry,
+) -> None:
+    session = registry.get_by_token(callback_data.game)
+    if (
+        session is None
+        or callback_data.phase != session.phase_number
+        or not isinstance(query.message, Message)
+        or session.chat_id != query.message.chat.id
+    ):
+        await query.answer("Это меню уже устарело.", show_alert=True)
+        return
+    if callback_data.action == "status":
+        remaining = ""
+        if session.phase_deadline is not None:
+            seconds = max(
+                0,
+                int((session.phase_deadline - datetime.now(UTC)).total_seconds()),
+            )
+            remaining = f" Осталось: {seconds} сек."
+        await query.answer(
+            f"Фаза: {PHASE_NAMES[session.phase]}. "
+            f"Живы: {len(session.alive_players)}/{len(session.players)}.{remaining}",
+            show_alert=True,
+        )
+        return
+    if callback_data.action == "players":
+        alive = ", ".join(player.display_name for player in session.alive_players)
+        dead = ", ".join(
+            player.display_name for player in session.players.values() if not player.alive
+        )
+        text = f"Живы ({len(session.alive_players)}): {alive or 'нет'}"
+        if dead:
+            text += f"\nВыбыли: {dead}"
+        if len(text) > 190:
+            text = text[:187] + "…"
+        await query.answer(text, show_alert=True)
+        return
+    await query.answer("Неизвестный пункт меню.", show_alert=True)
 
 
 @router.callback_query(NightActionCallback.filter())

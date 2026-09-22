@@ -65,6 +65,12 @@ def session_to_dict(session: GameSession) -> dict[str, Any]:
         "winner_value": winner_value,
         "phase_deadline": _datetime_value(session.phase_deadline),
         "main_message_id": session.main_message_id,
+        "main_message_text": session.main_message_text,
+        "original_chat_permissions": session.original_chat_permissions,
+        "original_player_permissions": {
+            str(user_id): permissions
+            for user_id, permissions in session.original_player_permissions.items()
+        },
     }
 
 
@@ -116,6 +122,12 @@ def session_from_dict(data: dict[str, Any]) -> GameSession:
         winner=winner,
         phase_deadline=_parse_datetime(data.get("phase_deadline")),
         main_message_id=data.get("main_message_id"),
+        main_message_text=data.get("main_message_text"),
+        original_chat_permissions=data.get("original_chat_permissions"),
+        original_player_permissions={
+            int(user_id): dict(permissions)
+            for user_id, permissions in data.get("original_player_permissions", {}).items()
+        },
     )
 
 

@@ -8,6 +8,7 @@ from aiogram.types import Message
 
 from app.bot.handlers.callbacks.game import _refresh_lobby
 from app.bot.keyboards.game import lobby_keyboard
+from app.bot.middlewares import GameChatGuardMiddleware
 from app.config import Settings
 from app.database.repositories import StatisticsStore
 from app.game.engine import GameEngine
@@ -21,6 +22,7 @@ from app.texts.rules import RULES_TEXT
 
 router = Router(name="group.game")
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
+router.message.outer_middleware(GameChatGuardMiddleware())
 
 
 def _players_text(registry: GameRegistry, chat_id: int) -> str:
@@ -36,11 +38,12 @@ def _players_text(registry: GameRegistry, chat_id: int) -> str:
     return f"👥 <b>Участники ({len(session.players)}):</b>\n{names}"
 
 
-@router.message(Command("game"))
+@router.message(Command("game", "menu"))
 async def create_game(
     message: Message,
     registry: GameRegistry,
     settings: Settings,
+    flow: GameFlowService,
 ) -> None:
     if message.from_user is None:
         return
@@ -52,20 +55,22 @@ async def create_game(
                 await _refresh_lobby(message.bot, existing, settings)
                 await registry.persist(existing)
             else:
-                await message.answer("Игра уже идёт. Текущая фаза: /status")
+                await flow.repost_current(existing)
             return
         session = registry.create(message.chat.id, message.from_user.id)
         bot_user = await message.bot.get_me()
+        lobby_text = LOBBY_CREATED.format(
+            count=0,
+            ready=0,
+            minimum=settings.min_players,
+            maximum=settings.max_players,
+        )
         lobby_message = await message.answer(
-            LOBBY_CREATED.format(
-                count=0,
-                ready=0,
-                minimum=settings.min_players,
-                maximum=settings.max_players,
-            ),
+            lobby_text,
             reply_markup=lobby_keyboard(session, bot_user.username),
         )
         session.main_message_id = lobby_message.message_id
+        session.main_message_text = lobby_text
         await registry.persist(session)
 
 
@@ -139,6 +144,11 @@ async def start_game_command(
             names = ", ".join(escape(player.display_name) for player in not_ready[:8])
             await message.answer(f"Сначала подтвердите готовность всех игроков: {names}")
             return
+        try:
+            await flow.ensure_moderation_ready(message.chat.id)
+        except ValueError as error:
+            await message.answer(str(error))
+            return
         assignments = engine.start(session)
         await registry.persist(session)
         failed = await messaging.send_roles(session.players.values(), assignments)
@@ -149,7 +159,10 @@ async def start_game_command(
                 "проверьте личные сообщения с ботом и создайте новую регистрацию."
             )
             return
-        await flow.begin_game(session)
+        try:
+            await flow.begin_game(session)
+        except ValueError as error:
+            await message.answer(str(error))
 
 
 @router.message(Command("status"))
@@ -253,3 +266,8 @@ async def stop_game(
         session.phase = GamePhase.CANCELLED
         await flow.cancel_game(session)
         await message.answer("🛑 Игра остановлена.")
+
+
+@router.message()
+async def consume_group_message() -> None:
+    """Keep the group router active so the game chat guard sees regular messages."""

@@ -40,6 +40,7 @@ async def test_game_phase_post_is_deleted_and_sent_at_bottom() -> None:
         ("send", -100123, "🌙 Ночь №1"),
     ]
     assert session.main_message_id == 222
+    assert session.main_message_text == "🌙 Ночь №1"
 
 
 @pytest.mark.asyncio
